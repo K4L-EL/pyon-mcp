@@ -11,7 +11,7 @@ import { loadCapabilities, renderCapabilitiesMarkdown } from "./capabilities.js"
 import { GETTING_STARTED } from "./resources.js";
 
 export const SERVER_NAME = "pyon-mcp";
-export const SERVER_VERSION = "0.2.0";
+export const SERVER_VERSION = "0.2.1";
 
 export function createServer(): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });

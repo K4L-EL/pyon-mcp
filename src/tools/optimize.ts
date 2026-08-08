@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { pyonFetch } from "../client.js";
-import { pollJob, requireJobId } from "../jobs.js";
+import { pollJob, requireJobId, progressNotifier } from "../jobs.js";
 import { asNumber, getNumber, getProp, getString, round2, round2opt, run } from "../format.js";
 import {
   DEFAULT_STEPS,
@@ -63,8 +63,9 @@ export function registerOptimizeTools(server: McpServer): void {
         "If the wait times out, the error includes a jobId to check with get_job_status.",
       inputSchema: OptimizeStrategyObject,
     },
-    async (args) =>
+    async (args, extra) =>
       run(async () => {
+        const onTick = progressNotifier(extra, "optimize_strategy");
         // Re-parse with the cross-field rules (xMax > xMin, yMax > yMin, the two
         // axes addressing different parameters).
         const input = parseInput("optimize_strategy", OptimizeStrategyInput, args);
@@ -77,7 +78,7 @@ export function registerOptimizeTools(server: McpServer): void {
             body: { ...axes, steps, ...(timeframe ? { timeframe } : {}) },
           }
         );
-        const result = await pollJob(requireJobId(res), { timeoutMs: 600_000 });
+        const result = await pollJob(requireJobId(res), { timeoutMs: 600_000, onTick });
 
         const xs = numberList(getProp(result, "xs"));
         const ys = numberList(getProp(result, "ys"));

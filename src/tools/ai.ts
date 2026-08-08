@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { pyonFetch } from "../client.js";
-import { pollJob, requireJobId } from "../jobs.js";
+import { pollJob, requireJobId, progressNotifier } from "../jobs.js";
 import { getAny, getArray, getNumber, getObject, getProp, getString, run, truncate } from "../format.js";
 import { CreateStrategyInput, DiagnoseStrategyInput, EditStrategyInput, MIN_PROMPT_CHARS } from "../schemas.js";
 import type { CreateStrategyResult, DiagnoseStrategyResult, EditStrategyResult } from "../types.js";
@@ -29,7 +29,7 @@ export function registerAiTools(server: McpServer): void {
         "300s for the build to finish. Use this when the user wants a new strategy; pass analysisId to ground the build " +
         "in a saved research report from create_research. " +
         `Parameters: description (string, ${MIN_PROMPT_CHARS} to 8000 characters, required) - name the instrument, entry rule, ` +
-        "exit rule and position size; analysisId (UUID, optional) from create_research or list_research. " +
+        "exit rule and position size; analysisId (optional, a Pyon research id like analysis_7f342df3dd6d4a4, from create_research or list_research). " +
         "Call get_capabilities FIRST so the indicator names, operators, action types and tickers you write into the " +
         "description are ones the engine supports, and so thresholds stay inside each indicator's range (an RSI entry above " +
         "100 can never fire). " +
@@ -37,13 +37,14 @@ export function registerAiTools(server: McpServer): void {
         "with run_backtest before editing or optimizing. If the wait times out, the error includes a jobId for get_job_status.",
       inputSchema: CreateStrategyInput,
     },
-    async ({ description, analysisId }) =>
+    async ({ description, analysisId }, extra) =>
       run(async () => {
+        const onTick = progressNotifier(extra, "create_strategy");
         const res = await pyonFetch<unknown>("/api/ai/generate-strategy-async", {
           method: "POST",
           body: { description, ...(analysisId ? { analysisId } : {}) },
         });
-        const result = await pollJob(requireJobId(res), { timeoutMs: 300_000 });
+        const result = await pollJob(requireJobId(res), { timeoutMs: 300_000, onTick });
 
         const strategyId = getString(result, "strategyId", "id");
         const out: CreateStrategyResult = {
@@ -79,13 +80,14 @@ export function registerAiTools(server: McpServer): void {
         "If the wait times out, the error includes a jobId to check with get_job_status.",
       inputSchema: EditStrategyInput,
     },
-    async ({ strategyId, instruction }) =>
+    async ({ strategyId, instruction }, extra) =>
       run(async () => {
+        const onTick = progressNotifier(extra, "edit_strategy");
         const res = await pyonFetch<unknown>(
           `/api/ai/edit-strategy-async/${encodeURIComponent(strategyId)}`,
           { method: "POST", body: { description: instruction } }
         );
-        const result = await pollJob(requireJobId(res), { timeoutMs: 300_000 });
+        const result = await pollJob(requireJobId(res), { timeoutMs: 300_000, onTick });
 
         const verification = getObject(result, "verification");
         const verdict = getString(verification, "verdict");
@@ -128,8 +130,9 @@ export function registerAiTools(server: McpServer): void {
         "If the wait times out, the error includes a jobId to check with get_job_status.",
       inputSchema: DiagnoseStrategyInput,
     },
-    async ({ strategyId, question }) =>
+    async ({ strategyId, question }, extra) =>
       run(async () => {
+        const onTick = progressNotifier(extra, "diagnose_strategy");
         const res = await pyonFetch<unknown>(
           `/api/ai/debug-strategy-async/${encodeURIComponent(strategyId)}`,
           {
@@ -141,7 +144,7 @@ export function registerAiTools(server: McpServer): void {
             },
           }
         );
-        const result = await pollJob(requireJobId(res), { timeoutMs: 300_000 });
+        const result = await pollJob(requireJobId(res), { timeoutMs: 300_000, onTick });
 
         const issues = getArray(result, "issues")
           .slice(0, 10)

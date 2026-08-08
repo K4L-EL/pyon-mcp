@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { pyonFetch } from "../client.js";
-import { pollUntil } from "../jobs.js";
+import { pollUntil, progressNotifier } from "../jobs.js";
 import { getArray, getNumber, getObject, getStatus, getString, run, truncate } from "../format.js";
 import {
   DEFAULT_BACKTEST_WINDOW_DAYS,
@@ -42,8 +42,9 @@ export function registerBacktestTools(server: McpServer): void {
         "On timeout the error names the backtest id, which get_job_status accepts as a fallback.",
       inputSchema: RunBacktestObject,
     },
-    async (args) =>
+    async (args, extra) =>
       run(async () => {
+        const onTick = progressNotifier(extra, "run_backtest");
         // Re-parse with the cross-field rules (endDate after startDate, minimum
         // window). The registered schema is the plain object so tools/list can
         // still render a complete JSON Schema.
@@ -85,6 +86,7 @@ export function registerBacktestTools(server: McpServer): void {
               `Timed out after ${BACKTEST_TIMEOUT_MS / 1000}s waiting for backtest ${backtestId}. ` +
               `It is likely still running on the server - call get_job_status("${backtestId}") shortly; ` +
               `it falls back to the backtest endpoint for backtest ids.`,
+            onTick,
           }
         );
 

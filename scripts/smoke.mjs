@@ -197,7 +197,8 @@ const BAD_INPUTS = [
   ["get_strategy", "bad uuid (a name, not an id)", { strategyId: "rsi-mean-reversion" }],
   ["get_strategy", "bad uuid (truncated)", { strategyId: "3f0c1e7a-2b44" }],
   ["get_strategy", "unknown extra param", { strategyId: UUID, verbose: true }],
-  ["get_research", "bad uuid", { analysisId: "latest" }],
+  ["get_research", "bad id", { analysisId: "latest" }],
+  ["get_research", "bare analysis_ prefix", { analysisId: "analysis_" }],
 
   ["run_backtest", "bad date format (dd/mm/yyyy)", { strategyId: UUID, startDate: "01/02/2024" }],
   ["run_backtest", "bad date format (unpadded)", { strategyId: UUID, startDate: "2024-1-5" }],
@@ -263,6 +264,8 @@ const GOOD_INPUTS = [
   ["list_research", "empty object", {}],
   ["get_strategy", "valid uuid", { strategyId: UUID }],
   ["get_research", "valid uuid", { analysisId: UUID }],
+  // The platform's REAL id format - a uuid-only validator broke get_research in production
+  ["get_research", "valid pyon analysis id", { analysisId: "analysis_7f342df3dd6d4a4" }],
 
   ["run_backtest", "strategyId only (all defaults)", { strategyId: UUID }, (v) => v.initialCapital === 50_000],
   [

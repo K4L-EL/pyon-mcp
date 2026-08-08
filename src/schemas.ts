@@ -192,19 +192,24 @@ export const StrategyId = z
     "Strategy UUID. Find it with list_strategies (it is also returned by create_strategy). Not a strategy name."
   );
 
+// Analysis ids are NOT UUIDs - the platform issues ids like
+// "analysis_7f342df3dd6d4a4". Accept that shape (and tolerate a UUID in case
+// the format ever changes) but reject anything that is clearly not an id.
+export const ANALYSIS_ID_RE = /^(analysis_[a-z0-9]{6,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+
 export const AnalysisId = z
   .string({
     required_error:
       "analysisId is required. Call list_research to see saved research report ids; create_research returns a new one.",
-    invalid_type_error: "analysisId must be a string UUID. Call list_research to see saved research report ids.",
+    invalid_type_error: "analysisId must be a string. Call list_research to see saved research report ids.",
   })
   .trim()
-  .uuid({
+  .regex(ANALYSIS_ID_RE, {
     message:
-      "analysisId must be a UUID like '3f0c1e7a-2b44-4d19-9f5e-8a1c2d3e4f50'. Call list_research to look up the id of a " +
+      "analysisId must be a Pyon research id like 'analysis_7f342df3dd6d4a4'. Call list_research to look up the id of a " +
       "saved report (create_research also returns the id it just generated).",
   })
-  .describe("Research report UUID from create_research or list_research.");
+  .describe("Research report id (like 'analysis_7f342df3dd6d4a4') from create_research or list_research.");
 
 export const Timeframe = z
   .enum(TIMEFRAME_VALUES, {

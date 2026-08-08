@@ -19,6 +19,41 @@ export class JobTimeoutError extends Error {
 export interface PollJobOptions {
   timeoutMs: number;
   intervalMs?: number;
+  /** Called once per poll tick - used to emit MCP progress notifications so
+   * clients with a per-request timeout (commonly 60s) keep the request alive
+   * across long jobs. */
+  onTick?: PollTick | undefined;
+}
+
+export type PollTick = (elapsedMs: number, statusLine: string) => void | Promise<void>;
+
+/** Builds an onTick that emits MCP progress notifications when the client
+ * asked for them (sent a progressToken). Safe no-op otherwise; notification
+ * failures never break the poll. */
+export function progressNotifier(extra: unknown, label: string): PollTick | undefined {
+  const x = extra as {
+    _meta?: { progressToken?: string | number };
+    sendNotification?: (n: unknown) => Promise<void>;
+  } | undefined;
+  const token = x?._meta?.progressToken;
+  const send = x?.sendNotification;
+  if (token === undefined || typeof send !== "function") return undefined;
+  let tick = 0;
+  return async (elapsedMs, statusLine) => {
+    tick += 1;
+    try {
+      await send({
+        method: "notifications/progress",
+        params: {
+          progressToken: token,
+          progress: tick,
+          message: `${label}: ${statusLine} (${Math.round(elapsedMs / 1000)}s elapsed)`,
+        },
+      });
+    } catch {
+      /* progress is best-effort */
+    }
+  };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -54,7 +89,8 @@ export function parseResultJson(job: unknown): unknown {
  */
 export async function pollJob(jobId: string, opts: PollJobOptions): Promise<unknown> {
   const intervalMs = opts.intervalMs ?? 3000;
-  const deadline = Date.now() + opts.timeoutMs;
+  const started = Date.now();
+  const deadline = started + opts.timeoutMs;
   let lastStatus = "unknown";
 
   for (;;) {
@@ -76,6 +112,7 @@ export async function pollJob(jobId: string, opts: PollJobOptions): Promise<unkn
         jobId
       );
     }
+    if (opts.onTick) await opts.onTick(Date.now() - started, lastStatus);
     await sleep(Math.min(intervalMs, Math.max(0, deadline - Date.now())));
   }
 }
@@ -87,10 +124,11 @@ export async function pollJob(jobId: string, opts: PollJobOptions): Promise<unkn
 export async function pollUntil<T>(
   fetchState: () => Promise<T>,
   isDone: (state: T) => boolean,
-  opts: { timeoutMs: number; intervalMs?: number; timeoutMessage: string }
+  opts: { timeoutMs: number; intervalMs?: number; timeoutMessage: string; onTick?: PollTick | undefined }
 ): Promise<T> {
   const intervalMs = opts.intervalMs ?? 3000;
-  const deadline = Date.now() + opts.timeoutMs;
+  const started = Date.now();
+  const deadline = started + opts.timeoutMs;
 
   for (;;) {
     const state = await fetchState();
@@ -98,6 +136,7 @@ export async function pollUntil<T>(
     if (Date.now() >= deadline) {
       throw new PyonApiError(opts.timeoutMessage);
     }
+    if (opts.onTick) await opts.onTick(Date.now() - started, "running");
     await sleep(Math.min(intervalMs, Math.max(0, deadline - Date.now())));
   }
 }

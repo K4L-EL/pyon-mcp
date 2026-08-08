@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { pyonFetch } from "../client.js";
-import { pollJob, requireJobId } from "../jobs.js";
+import { pollJob, requireJobId, progressNotifier } from "../jobs.js";
 import { getAny, getArray, getNumber, getObject, getString, run, truncate } from "../format.js";
 import { CreateResearchInput, GetResearchInput, ListResearchInput, MIN_PROMPT_CHARS } from "../schemas.js";
 import type {
@@ -53,13 +53,14 @@ export function registerResearchTools(server: McpServer): void {
         "the error includes a jobId to check with get_job_status.",
       inputSchema: CreateResearchInput,
     },
-    async ({ prompt }) =>
+    async ({ prompt }, extra) =>
       run(async () => {
+        const onTick = progressNotifier(extra, "create_research");
         const res = await pyonFetch<unknown>("/api/analysis/generate-async", {
           method: "POST",
           body: { prompt },
         });
-        const result = await pollJob(requireJobId(res), { timeoutMs: 300_000 });
+        const result = await pollJob(requireJobId(res), { timeoutMs: 300_000, onTick });
         const analysisId = extractAnalysisId(result);
 
         if (!analysisId) {
@@ -99,7 +100,7 @@ export function registerResearchTools(server: McpServer): void {
       description:
         "Fetch a saved research report by analysisId. Use this to re-read research created earlier (find ids with " +
         "list_research) before building or editing strategies based on it. " +
-        "Parameters: analysisId (UUID, required; from create_research or list_research). " +
+        "Parameters: analysisId (required, a Pyon research id like analysis_7f342df3dd6d4a4, from create_research or list_research). " +
         "Returns title, symbol, overall score and view, and truncated narrative sections: executive summary, thesis, " +
         "risks, catalysts, and conclusion. Full layouts and raw data are never dumped.",
       inputSchema: GetResearchInput,
