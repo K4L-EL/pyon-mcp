@@ -1,0 +1,49 @@
+{
+  "name": "pyon-mcp",
+  "version": "0.2.0",
+  "description": "MCP server that lets AI agents drive the Pyon trading platform (api.pyon.io): research, strategy building, backtesting, diagnosis, and parameter optimization",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "pyon-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc",
+    "smoke": "node scripts/smoke.mjs",
+    "check": "npm run build && npm run smoke"
+  },
+  "keywords": [
+    "mcp",
+    "modelcontextprotocol",
+    "pyon",
+    "trading",
+    "backtesting",
+    "ai-agent"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "zod": "^3.25.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/K4L-EL/pyon-mcp.git"
+  },
+  "homepage": "https://github.com/K4L-EL/pyon-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/K4L-EL/pyon-mcp/issues"
+  },
+  "author": "Pyon Labs Ltd (https://pyon.io)"
+}
