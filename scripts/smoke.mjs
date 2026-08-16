@@ -472,6 +472,43 @@ for (const [tool, label, args, expectedFragment] of WIRE_CASES) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Block 6: capability cache policy                                    */
+/* ------------------------------------------------------------------ */
+
+console.log("\n[6] capability cache policy");
+
+const { shouldUseCached, FALLBACK_RETRY_MS } = await import("../dist/capabilities.js");
+
+{
+  const live = { source: "api" };
+  const fallback = { source: "bundled" };
+  const T = 1_000_000;
+
+  assert(shouldUseCached(undefined, 0, T) === false, "an empty cache is never used");
+  assert(shouldUseCached(live, T, T) === true, "a fresh live catalog is used");
+  assert(
+    shouldUseCached(live, T, T + 30 * 24 * 3600 * 1000) === true,
+    "a live catalog stays good for the session, however long it runs"
+  );
+  assert(shouldUseCached(fallback, T, T + 1) === true, "a fallback is reused inside the retry window");
+  assert(
+    shouldUseCached(fallback, T, T + FALLBACK_RETRY_MS - 1) === true,
+    "a fallback is still reused just before the window closes"
+  );
+  // The regression: without this, one blip at startup pinned a long-lived
+  // server to the bundled catalog forever, still quoting an outage that ended.
+  assert(
+    shouldUseCached(fallback, T, T + FALLBACK_RETRY_MS) === false,
+    "a fallback is dropped once the retry window passes"
+  );
+  assert(
+    shouldUseCached(fallback, T, T + 24 * 3600 * 1000) === false,
+    "a day-old fallback is never reused"
+  );
+  assert(FALLBACK_RETRY_MS > 0 && FALLBACK_RETRY_MS <= 300_000, "the retry window is a sane length", String(FALLBACK_RETRY_MS));
+}
+
+/* ------------------------------------------------------------------ */
 /* Summary                                                             */
 /* ------------------------------------------------------------------ */
 

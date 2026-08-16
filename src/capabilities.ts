@@ -257,7 +257,33 @@ export const CAPABILITY_NOTES: string[] = [
 const CAPABILITIES_PATH = "/api/capabilities";
 const FETCH_TIMEOUT_MS = 8_000;
 
+/**
+ * How long a BUNDLED result is reused before the live endpoint is tried again.
+ * A live result is cached for the whole session - the catalog is static - but a
+ * fallback must not be, or a single blip at startup pins a server that may run
+ * for days to the bundled copy, still quoting an outage that ended hours ago.
+ * The window only exists so a burst of calls during a real outage does not pay
+ * the fetch timeout every time.
+ */
+export const FALLBACK_RETRY_MS = 60_000;
+
 let cached: CapabilitiesBundle | undefined;
+let cachedAt = 0;
+
+/**
+ * The cache policy on its own, so the smoke suite can check it with fabricated
+ * clocks instead of waiting out a real minute: a live catalog is good for the
+ * session, a fallback only until the retry window passes.
+ */
+export function shouldUseCached(
+  bundle: CapabilitiesBundle | undefined,
+  cachedAtMs: number,
+  nowMs: number
+): boolean {
+  if (!bundle) return false;
+  if (bundle.source === "api") return true;
+  return nowMs - cachedAtMs < FALLBACK_RETRY_MS;
+}
 
 function readIndicators(value: unknown, fallbackCategory: string): IndicatorSpec[] {
   const out: IndicatorSpec[] = [];
@@ -368,10 +394,12 @@ function bundled(reason: string): CapabilitiesBundle {
 
 /**
  * Fetch the live catalog, falling back to the bundled copy on any problem.
- * Cached in-process for the lifetime of the server session.
+ * A live result is cached for the lifetime of the server session; a fallback is
+ * only held for FALLBACK_RETRY_MS, so a server that started during an outage
+ * recovers to the real catalog on its own.
  */
 export async function loadCapabilities(): Promise<CapabilitiesBundle> {
-  if (cached) return cached;
+  if (cached && shouldUseCached(cached, cachedAt, Date.now())) return cached;
 
   const key = process.env.PYON_API_KEY;
   const url = apiBaseUrl() + CAPABILITIES_PATH;
@@ -425,12 +453,14 @@ export async function loadCapabilities(): Promise<CapabilitiesBundle> {
   }
 
   cached = resolved;
+  cachedAt = Date.now();
   return resolved;
 }
 
 /** Test/maintenance hook: drop the in-process cache. */
 export function resetCapabilitiesCache(): void {
   cached = undefined;
+  cachedAt = 0;
 }
 
 /* ------------------------------------------------------------------ */
