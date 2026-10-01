@@ -5,7 +5,9 @@ It lets AI agents - Claude Code, Claude Desktop, Codex, or any MCP client - driv
 search markets, generate research, build and edit node-graph strategies with AI, run backtests,
 diagnose problems, and optimize parameters with 2-D sweeps.
 
-Runs over stdio, talks to `api.pyon.io`, and needs only Node 18+.
+Runs over stdio, talks to `api.pyon.io`, and needs only Node 18+. It can also run as a hosted
+connector over Streamable HTTP, where people add it by URL and sign in with their Pyon account instead
+of pasting a key (see [Hosted connector](#hosted-connector)).
 
 ## Getting an API key
 
@@ -63,6 +65,36 @@ command = "npx"
 args = ["-y", "pyon-mcp"]
 env = { PYON_API_KEY = "pyk_..." }
 ```
+
+## Hosted connector
+
+`pyon-mcp --http` (or `PYON_MCP_TRANSPORT=http`) serves the same tools at a public URL such as
+`https://mcp.pyon.io/mcp`. In claude.ai and Claude Desktop you add that URL as a custom connector, and in
+Claude Code you run `claude mcp add --transport http pyon https://mcp.pyon.io/mcp`. Claude then opens a
+Pyon page in the browser, you sign in and approve the connection, and the tools appear. No key is pasted
+anywhere, and you can disconnect the app at any time under **Account > API Access**.
+
+The server follows the MCP authorization specification. It answers an unauthenticated request with 401
+and a `WWW-Authenticate` header pointing at its protected resource metadata
+(`/.well-known/oauth-protected-resource/mcp`), which names Pyon's authorization server. That server
+registers the app, asks the signed-in user to consent, and issues short-lived access tokens with
+rotating refresh tokens. The MCP server never forwards those tokens to the Pyon API: it exchanges each
+one (RFC 8693) for a separate API token, so a token held by an app is only good at this endpoint.
+
+| Variable | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `PYON_MCP_PUBLIC_URL` | yes | - | The MCP endpoint exactly as users add it, which is also the OAuth resource |
+| `PYON_MCP_CLIENT_ID` | yes | - | This server's resource server id at Pyon's authorization server |
+| `PYON_MCP_CLIENT_SECRET` | yes | - | Its secret; Pyon stores only the SHA-256 digest |
+| `PYON_API_URL` | no | `https://api.pyon.io` | API base URL |
+| `PYON_AUTH_ISSUER` | no | `PYON_API_URL` | Issuer of Pyon's authorization server |
+| `PYON_API_RESOURCE` | no | `PYON_API_URL` | Resource the exchanged API tokens are issued for |
+| `HOST` / `PORT` | no | `127.0.0.1` / `3000` | Listen address; use `0.0.0.0` in a container |
+| `PYON_MCP_ALLOWED_HOSTS` | no | the public URL's host | Host headers accepted, as protection against DNS rebinding |
+| `PYON_MCP_ALLOWED_ORIGINS` | no | `https://claude.ai,https://claude.com` | Browser origins accepted; requests with no Origin are always accepted |
+
+The server is stateless, so any number of copies can run behind a load balancer, and `GET /healthz`
+answers for health checks.
 
 ## Start here: `get_capabilities`
 
@@ -174,7 +206,8 @@ states what IS allowed.
 npm install
 npm run build   # tsc -> dist/
 npm run smoke   # offline, keyless: tools/list, JSON Schema completeness, and the validation tables
-npm run check   # build + smoke
+npm run smoke:http  # offline: the hosted server against a fake Pyon authorization server and API
+npm run check   # build + smoke + smoke:http, the gate CI runs on Node 20 and 22
 ```
 
 The compiler runs at the strictest settings the code satisfies: `strict`, `noUncheckedIndexedAccess`,
@@ -190,3 +223,9 @@ here. Wire payloads are read through the case-insensitive helpers in `src/format
 that every published JSON Schema names its parameters and sets `additionalProperties: false`, and it
 drives every tool's zod schema with a table of bad inputs that must be rejected and good inputs that
 must parse. It exits non-zero on any failure.
+
+`scripts/http-smoke.mjs` starts a fake Pyon that plays the authorization server and the API, then
+drives the hosted server with the SDK's own client. It checks the discovery documents and the 401
+challenge, the Host and Origin checks, that two users calling at once each reach the API as
+themselves and never with the token their app holds, that a disconnected user is sent back to sign
+in, and that `node dist/index.js` without a flag still serves stdio.
