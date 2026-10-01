@@ -1,0 +1,25 @@
+name: CI
+
+# The same gate prepublish and the hosted deploy rely on: build, the stdio
+# smoke suite, and the hosted server's smoke suite. All offline, no API key.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    name: build and smoke (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run check
