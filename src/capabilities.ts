@@ -10,7 +10,7 @@
  * userPrompt) plus BarsPerSession for the timeframes.
  */
 
-import { apiBaseUrl } from "./client.js";
+import { apiBaseUrl, sharedFetchCredential } from "./client.js";
 import { asString, getArray, getString } from "./format.js";
 import type {
   Capabilities,
@@ -401,7 +401,8 @@ function bundled(reason: string): CapabilitiesBundle {
 export async function loadCapabilities(): Promise<CapabilitiesBundle> {
   if (cached && shouldUseCached(cached, cachedAt, Date.now())) return cached;
 
-  const key = process.env.PYON_API_KEY;
+  // Every user shares this cache, so the hosted server fetches the public catalog without anyone's token.
+  const key = sharedFetchCredential();
   const url = apiBaseUrl() + CAPABILITIES_PATH;
   let resolved: CapabilitiesBundle;
 
