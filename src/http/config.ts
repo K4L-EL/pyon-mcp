@@ -1,5 +1,6 @@
 // Configuration for the hosted (Streamable HTTP) server, read from the environment.
 // The stdio server reads none of it.
+import { OAUTH_SCOPES, type Toolset } from "../permissions.js";
 
 const DEFAULT_API_URL = "https://api.pyon.io";
 const DEFAULT_ALLOWED_ORIGINS = ["https://claude.ai", "https://claude.com"];
@@ -20,6 +21,8 @@ export interface HostedConfig {
   allowedHosts: string[];
   allowedOrigins: string[];
   requiredScope: string;
+  toolset: Exclude<Toolset, "all">;
+  supportedScopes: string[];
 }
 
 export class HostedConfigError extends Error {
@@ -45,6 +48,8 @@ function httpUrl(value: string | undefined): URL | undefined {
 
 export function readHostedConfig(env: NodeJS.ProcessEnv = process.env): HostedConfig {
   const problems: string[] = [];
+  const toolset = env.PYON_MCP_PRODUCT ?? "quant";
+  if (toolset !== "quant" && toolset !== "wealth") problems.push("PYON_MCP_PRODUCT must be quant or wealth");
   const publicUrl = httpUrl(env.PYON_MCP_PUBLIC_URL);
   if (!publicUrl) problems.push("PYON_MCP_PUBLIC_URL must be the public URL of the MCP endpoint, for example https://mcp.pyon.io/mcp");
   else if (publicUrl.hash || publicUrl.search) problems.push("PYON_MCP_PUBLIC_URL must have no query or fragment");
@@ -60,7 +65,7 @@ export function readHostedConfig(env: NodeJS.ProcessEnv = process.env): HostedCo
   const port = Number(env.PORT ?? "3000");
   if (!Number.isInteger(port) || port <= 0 || port > 65535) problems.push("PORT must be a TCP port number");
 
-  if (problems.length > 0 || !publicUrl) throw new HostedConfigError(problems);
+  if (problems.length > 0 || !publicUrl || (toolset !== "quant" && toolset !== "wealth")) throw new HostedConfigError(problems);
 
   const host = env.HOST?.trim() || "127.0.0.1";
   const loopback = LOOPBACK_HOSTS.includes(host) || host === "::1";
@@ -75,6 +80,9 @@ export function readHostedConfig(env: NodeJS.ProcessEnv = process.env): HostedCo
     port,
     allowedHosts: list(env.PYON_MCP_ALLOWED_HOSTS) ?? [publicUrl.hostname, ...(loopback ? LOOPBACK_HOSTS : [])],
     allowedOrigins: list(env.PYON_MCP_ALLOWED_ORIGINS) ?? DEFAULT_ALLOWED_ORIGINS,
-    requiredScope: "agent",
+    toolset,
+    requiredScope: toolset === "wealth" ? OAUTH_SCOPES.wealthRead : OAUTH_SCOPES.quant,
+    supportedScopes: toolset === "wealth"
+      ? [OAUTH_SCOPES.wealthRead, OAUTH_SCOPES.issueReports, OAUTH_SCOPES.branding] : [OAUTH_SCOPES.quant],
   };
 }

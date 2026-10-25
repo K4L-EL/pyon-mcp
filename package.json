@@ -1,7 +1,7 @@
 {
   "name": "pyon-mcp",
-  "version": "0.2.1",
-  "description": "MCP server that lets AI agents drive the Pyon trading platform (api.pyon.io): research, strategy building, backtesting, diagnosis, and parameter optimization",
+  "version": "0.3.0",
+  "description": "Pyon MCP connector for existing Quant tools and scoped Wealth client reviews and branding over stdio or authenticated HTTP",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -18,8 +18,9 @@
   "scripts": {
     "build": "tsc",
     "smoke": "node scripts/smoke.mjs",
-    "check": "npm run build && npm run smoke && npm run smoke:http",
-    "smoke:http": "node scripts/http-smoke.mjs"
+    "check": "npm run build && npm run smoke && npm run smoke:wealth && npm run smoke:http",
+    "smoke:http": "node scripts/http-smoke.mjs",
+    "smoke:wealth": "node scripts/smoke-wealth.mjs"
   },
   "keywords": [
     "mcp",

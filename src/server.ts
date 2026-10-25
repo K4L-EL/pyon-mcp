@@ -7,41 +7,54 @@ import { registerOptimizeTools } from "./tools/optimize.js";
 import { registerResearchTools } from "./tools/research.js";
 import { registerJobTools } from "./tools/jobs.js";
 import { registerCapabilityTools } from "./tools/capabilities.js";
+import { registerWealthTools } from "./tools/wealth.js";
+import { registerWealthBrandingTools } from "./tools/wealth-branding.js";
 import { loadCapabilities, renderCapabilitiesMarkdown } from "./capabilities.js";
-import { GETTING_STARTED } from "./resources.js";
+import { GETTING_STARTED, QUANT_GETTING_STARTED, WEALTH_GETTING_STARTED } from "./resources.js";
+import { OAUTH_SCOPES, type ServerOptions } from "./permissions.js";
 
 export const SERVER_NAME = "pyon-mcp";
-export const SERVER_VERSION = "0.2.1";
+export const SERVER_VERSION = "0.3.0";
 
-export function createServer(): McpServer {
+export function createServer(options: ServerOptions = {}): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
+  const toolset = options.toolset ?? "all";
+  const permitted = (scope: string): boolean => options.scopes === undefined || options.scopes.has(scope);
 
   // JSON-RPC allows omitting params.arguments entirely, and real agent clients
   // do it for tools whose parameters are all optional - but the SDK feeds the
   // raw undefined to zod, which rejects every object schema with "Required".
   // Defaulting to {} here keeps strict per-tool validation (a tool with
   // required parameters still fails loudly, naming the missing field) while
-  // making an omitted arguments object legal. Guarded: if a future SDK renames
-  // the hook, the shim silently no-ops and behavior reverts to SDK default.
-  const proto = Object.getPrototypeOf(server) as {
-    validateToolInput?: (tool: unknown, args: unknown, name: string) => Promise<unknown>;
-  };
-  if (typeof proto.validateToolInput === "function" && !(proto as { __pyonArgsShim?: boolean }).__pyonArgsShim) {
-    const original = proto.validateToolInput;
-    proto.validateToolInput = function (tool: unknown, args: unknown, name: string) {
-      return original.call(this, tool, args ?? {}, name);
-    };
-    (proto as { __pyonArgsShim?: boolean }).__pyonArgsShim = true;
+  // making an omitted arguments object legal. The shim is an own property of
+  // this instance rather than a patch on McpServer.prototype: the SDK invokes it
+  // as `this.validateToolInput(...)`, so the own property shadows the inherited
+  // method for this server only, and any other McpServer sharing the process
+  // keeps stock behavior. Guarded: if a future SDK renames the hook, the shim
+  // silently no-ops and behavior reverts to the SDK default - scripts/smoke.mjs
+  // calls the all-optional tools with no arguments object, so that regression
+  // fails the smoke suite rather than shipping.
+  type ValidateToolInput = (tool: unknown, args: unknown, name: string) => Promise<unknown>;
+  const target = server as unknown as { validateToolInput?: ValidateToolInput };
+  const inherited = target.validateToolInput;
+  if (typeof inherited === "function") {
+    target.validateToolInput = (tool, args, name) => inherited.call(server, tool, args ?? {}, name);
   }
 
-  registerCapabilityTools(server);
-  registerMarketTools(server);
-  registerStrategyTools(server);
-  registerAiTools(server);
-  registerBacktestTools(server);
-  registerOptimizeTools(server);
-  registerResearchTools(server);
-  registerJobTools(server);
+  if (toolset !== "wealth" && permitted(OAUTH_SCOPES.quant)) {
+    registerCapabilityTools(server);
+    registerMarketTools(server);
+    registerStrategyTools(server);
+    registerAiTools(server);
+    registerBacktestTools(server);
+    registerOptimizeTools(server);
+    registerResearchTools(server);
+    registerJobTools(server);
+  }
+  if (toolset !== "quant" && permitted(OAUTH_SCOPES.wealthRead)) {
+    registerWealthTools(server, { issueReports: permitted(OAUTH_SCOPES.issueReports) });
+    registerWealthBrandingTools(server, { buildBrand: permitted(OAUTH_SCOPES.branding) });
+  }
 
   server.registerResource(
     "getting-started",
@@ -54,11 +67,11 @@ export function createServer(): McpServer {
       mimeType: "text/markdown",
     },
     async (uri) => ({
-      contents: [{ uri: uri.href, mimeType: "text/markdown", text: GETTING_STARTED }],
+      contents: [{ uri: uri.href, mimeType: "text/markdown", text: toolset === "wealth" ? WEALTH_GETTING_STARTED : toolset === "quant" ? QUANT_GETTING_STARTED : GETTING_STARTED }],
     })
   );
 
-  server.registerResource(
+  if (toolset !== "wealth" && permitted(OAUTH_SCOPES.quant)) server.registerResource(
     "capabilities",
     "pyon://capabilities",
     {

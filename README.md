@@ -96,6 +96,66 @@ one (RFC 8693) for a separate API token, so a token held by an app is only good 
 The server is stateless, so any number of copies can run behind a load balancer, and `GET /healthz`
 answers for health checks.
 
+### Wealth hosted deployment
+
+Use a separate endpoint and resource-server credential for Wealth. `PYON_MCP_PRODUCT=wealth` requires
+`wealth:read`, exposes nine read/preview tools, and exposes `issue_review_report` only with
+`reports:issue` and `start_brand_build` only with `wealth:branding`. Report issue also requires the
+adviser's page-review confirmation. Branding proposals retain the explicit rights confirmation and
+the API's organisation-admin check. The API restricts these grants to the connector's named Wealth
+operations; they cannot edit client facts, mint links, publish branding, or call Quant tools.
+
+Configure the API before starting the container, retaining any existing Quant resource-server entry:
+
+```text
+OAuth__Issuer=https://api.pyon.io
+OAuth__ApiResource=https://api.pyon.io
+OAuth__ConsentUrl=<Quant origin>/oauth/consent
+OAuth__WealthConsentUrl=<Wealth origin>/oauth/consent
+OAuth__ResourceServers__N__ClientId=pyon-mcp-wealth
+OAuth__ResourceServers__N__SecretSha256=<SHA-256 hex digest of the MCP client secret>
+OAuth__ResourceServers__N__Resource=<public Wealth MCP origin>/mcp
+OAuth__ResourceServers__N__Scopes=wealth:read reports:issue wealth:branding
+```
+
+Set the container environment explicitly:
+
+```text
+PYON_MCP_PRODUCT=wealth
+PYON_MCP_PUBLIC_URL=<identical public Wealth MCP origin>/mcp
+PYON_MCP_CLIENT_ID=pyon-mcp-wealth
+PYON_MCP_CLIENT_SECRET=<raw resource-server secret, from the container secret store>
+PYON_API_URL=https://api.pyon.io
+PYON_AUTH_ISSUER=https://api.pyon.io
+PYON_API_RESOURCE=https://api.pyon.io
+HOST=0.0.0.0
+PORT=3000
+```
+
+The secret authenticates the resource server during per-user token exchange. Set no `PYON_API_KEY`
+on the hosted container. The API stores only the digest; raw user access/refresh tokens are not persisted
+in a token store by this server. The public URL must exactly match the API's resource entry, including the
+`/mcp` path and trailing-slash choice.
+
+The Dockerfile pins Node 22.23.3 and its base-image digest, installs the lockfile, compiles TypeScript,
+and runs as the unprivileged `node` user. Build the target platform your container host uses:
+
+```bash
+docker build --platform linux/amd64 --build-arg VCS_REF="$(git rev-parse HEAD)" -t pyon-mcp-wealth:release .
+```
+
+Expose port 3000 through HTTPS ingress. For an HTTP platform probe use `/healthz` with a Host header
+matching the public MCP URL; a TCP probe on port 3000 also avoids platform-specific Host names. The
+included container health check sends that Host header automatically. Keep Host validation enabled,
+and configure additional allowed hosts/origins only for actual deployment addresses or clients.
+
+Local checks use a fake authorization server/API. They verify product separation, granted tool
+visibility, concurrent users, tenant not-found handling, discovery, revocation, and stdio. They do not
+verify a public deployment, DNS/TLS, real app registration/consent, or provider configuration. After
+deployment, verify public metadata and the 401 challenge, then connect two real test accounts and
+confirm their data stays separate and disconnecting a grant stops its next API request.
+
+
 ## Start here: `get_capabilities`
 
 Pyon turns a strategy description into a node graph literally. An indicator name the engine does not
@@ -167,6 +227,47 @@ states what IS allowed.
 | `list_research` | List saved research reports | none |
 | `get_job_status` | Escape hatch when a wait timed out; also accepts backtest ids | none |
 
+## Pyon Wealth client reviews
+
+Advisers on Pyon Wealth can prepare and issue client review reports through an agent. Create the token in Pyon Wealth under Settings, in the Agent access card. A token can find clients, calculate performance and prepare previews, but it can issue a report only if you allowed that when creating it. Pyon refuses an issue from any other token, and every report an agent issues records that an agent issued it.
+
+An agent starts with `list_wealth_clients`, then `list_performance_sources` for the client, and can check figures with `get_performance`. `preview_review_report` renders the report in the firm's published branding and returns its pages as images, which the agent must show the adviser. Only after the adviser has reviewed every page and approved the report may the agent call `issue_review_report` with `adviserReviewedEveryPage` set to `true`. A preview can be issued for 30 minutes, and only while its history and renderer are unchanged. `list_review_reports` shows issued reports and how each was issued, and `list_layout_examples` lists the example brands an organisation can start its layout from.
+
+An organisation admin's agent can also build the firm's report brand from its website. `list_organisations` shows which organisations the adviser can manage branding for, and `start_brand_build` starts a build once the agent confirms, with `rightsConfirmed` set to `true`, that the firm owns or may use the website's name, logo and colours. Pyon's builder then reads the site, chooses an example layout, restyles it with the firm's name, colours and logo, and checks the rendered pages, which takes a few minutes. `get_brand_build` follows the build and, when it succeeds, returns the summary, each decision with its website evidence, the warnings and the proposed pages as images for the agent to show. The proposal is stored for review; the live brand stays unchanged: an admin uses the build from Build a brand from your website in Pyon Wealth's layout editor and saves a draft for review. One build runs per organisation at a time and ten can start in a day, and `list_brand_builds` lists recent builds.
+
+### What each tool does
+
+| Tool | Summary | Wait |
+| --- | --- | --- |
+| `get_capabilities` | The indicator / operator / action / ticker catalog, with API fetch and bundled fallback | none |
+| `search_symbols` | Resolve tickers and names, each flagged `tradable` against the engine's universe | none |
+| `list_strategies` | Saved strategies with id, name, nodeCount, updatedAt | none |
+| `get_strategy` | Per-node id, type, label, flattened config, and `sweepableFields` (feeds `optimize_strategy`) | none |
+| `delete_strategy` | **Permanently** delete a strategy, its versions and its backtests; needs `confirm: true` | none |
+| `create_strategy` | AI-build a new strategy, optionally grounded in research; checks the result against the catalog | up to 300s |
+| `edit_strategy` | AI-edit a strategy; before/after verdict, plus a catalog check of the result | up to 300s |
+| `run_backtest` | Metrics plus verbatim diagnostics; flags 0-trade causes and short daily windows | up to 180s |
+| `list_backtests` | Previous runs for a strategy, newest first - no re-running, no wait | none |
+| `diagnose_strategy` | AI debugger with sample-backtest evidence; message, issues, suggested fix | up to 300s |
+| `optimize_strategy` | 2-D parameter sweep; best cell, its robustness, current cell, sharpe grid | up to 600s |
+| `create_research` | Generate a saved research report; returns analysisId plus executive summary | up to 300s |
+| `get_research` | Fetch a saved report: score, view, truncated narratives | none |
+| `list_research` | List saved research reports | none |
+| `delete_research` | **Permanently** delete a saved report; needs `confirm: true` | none |
+| `get_job_status` | Escape hatch when a wait timed out; also accepts backtest ids | none |
+| `list_wealth_clients` | Pyon Wealth clients with id, name, and simulated and archived flags | none |
+| `list_performance_sources` | A client's performance history sources with their first and last dates | none |
+| `get_performance` | Returns and opening and closing values over a period; a missing figure keeps its reason | none |
+| `preview_review_report` | Render a review report preview in the firm's branding and return its pages as images | up to 90s |
+| `issue_review_report` | Issue a previewed report after the adviser approved every page; needs a token allowed to issue | none |
+| `list_review_reports` | A client's issued reports and whether each was issued in the web app or by an agent | none |
+| `list_layout_examples` | The example brands an organisation can start its report layout from | none |
+| `list_organisations` | The adviser's organisations, their role and whether they can manage branding | none |
+| `start_brand_build` | Start building a proposed report brand from the firm's website; needs an admin and the rights confirmation | none |
+| `list_brand_builds` | An organisation's recent brand builds and their status | none |
+| `get_brand_build` | A build's steps, or its summary, decisions, warnings, colours and proposed pages as images | none |
+
+
 ## Validation rules worth knowing
 
 - **Ids are UUIDs.** A strategy name will be rejected; the message points at `list_strategies`.
@@ -229,3 +330,5 @@ drives the hosted server with the SDK's own client. It checks the discovery docu
 challenge, the Host and Origin checks, that two users calling at once each reach the API as
 themselves and never with the token their app holds, that a disconnected user is sent back to sign
 in, and that `node dist/index.js` without a flag still serves stdio.
+
+The Quant tool implementations, schemas and result formats in this release match `527e520` on main. Hosted credentials are isolated per request. This Wealth release does not include the separate Quant tool expansion from the earlier `wealth-report-tools` branch.

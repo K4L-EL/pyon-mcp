@@ -77,7 +77,7 @@ const UUID2 = "9b1d4e2c-7a35-4c88-b0f1-52d6e9a7c311";
 console.log("\n[1] tools/list and resources/list (no API key)");
 
 const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-const server = createServer();
+const server = createServer({ toolset: "quant" });
 const client = new Client({ name: "pyon-mcp-smoke", version: "0.0.0" });
 await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
 

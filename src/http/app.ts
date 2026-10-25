@@ -8,7 +8,7 @@ import { getOAuthProtectedResourceMetadataUrl, mcpAuthMetadataRouter } from "@mo
 import { metadataHandler } from "@modelcontextprotocol/sdk/server/auth/handlers/metadata.js";
 import type { OAuthMetadata, OAuthProtectedResourceMetadata } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { createServer } from "../server.js";
+import { createServer, SERVER_VERSION } from "../server.js";
 import { withRequestCredential } from "../client.js";
 import type { HostedConfig } from "./config.js";
 import type { TokenExchangeVerifier } from "./token-exchange.js";
@@ -34,25 +34,25 @@ export function createHostedApp({ config, authorizationServer, verifier }: Hoste
     next();
   });
 
-  // Only the base scope is advertised, so a client that asks for every advertised scope still asks for the least.
+  // Quant keeps its existing base scope. Wealth's issue permission still needs the user's explicit consent switch.
   const resourceMetadata: OAuthProtectedResourceMetadata = {
     resource: config.publicUrl.href,
     authorization_servers: [authorizationServer.issuer],
-    scopes_supported: [config.requiredScope],
-    resource_name: "Pyon",
+    scopes_supported: config.supportedScopes,
+    resource_name: config.toolset === "wealth" ? "Pyon Wealth" : "Pyon Quant",
   };
   // The SDK router serves the path-specific document RFC 9728 names first; the root copy serves clients that try it.
   app.use(mcpAuthMetadataRouter({
     oauthMetadata: authorizationServer,
     resourceServerUrl: config.publicUrl,
-    scopesSupported: [config.requiredScope],
-    resourceName: "Pyon",
+    scopesSupported: config.supportedScopes,
+    resourceName: config.toolset === "wealth" ? "Pyon Wealth" : "Pyon Quant",
   }));
   const rootMetadata = metadataHandler(resourceMetadata);
   app.use("/.well-known/oauth-protected-resource", (req, res, next) => (req.path === "/" ? rootMetadata(req, res, next) : next()));
 
   app.get("/healthz", (_req, res) => {
-    res.json({ status: "ok" });
+    res.json({ status: "ok", product: config.toolset, version: SERVER_VERSION });
   });
 
   const mcpPath = config.publicUrl.pathname;
@@ -66,7 +66,7 @@ export function createHostedApp({ config, authorizationServer, verifier }: Hoste
     const auth = req.auth;
     const apiToken = auth?.extra?.apiToken;
     if (!auth || typeof apiToken !== "string") return jsonRpcError(res, 500, "The request was authenticated without a Pyon API token");
-    const server = createServer();
+    const server = createServer({ toolset: config.toolset, scopes: new Set(auth.scopes) });
     // No sessionIdGenerator: stateless, a fresh transport per request.
     const transport = new StreamableHTTPServerTransport({});
     res.on("close", () => {
