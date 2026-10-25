@@ -130,9 +130,14 @@ export function isoDaysAgo(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+export type ToolContent = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
+export class WithImages {
+  constructor(readonly payload: unknown, readonly pngs: string[]) {}
+}
+
 export interface ToolResult {
   [key: string]: unknown;
-  content: { type: "text"; text: string }[];
+  content: ToolContent[];
   isError?: boolean;
 }
 
@@ -149,7 +154,11 @@ export function toolError(err: unknown): ToolResult {
 /** Wrap a tool body: return its payload as compact JSON, or a clean isError result. */
 export async function run(fn: () => Promise<unknown>): Promise<ToolResult> {
   try {
-    return ok(await fn());
+    const value = await fn();
+    if (value instanceof WithImages) {
+      return { content: [...ok(value.payload).content, ...value.pngs.map((data): ToolContent => ({ type: "image", data, mimeType: "image/png" }))] };
+    }
+    return ok(value);
   } catch (err) {
     return toolError(err);
   }
