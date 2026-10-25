@@ -331,4 +331,4 @@ challenge, the Host and Origin checks, that two users calling at once each reach
 themselves and never with the token their app holds, that a disconnected user is sent back to sign
 in, and that `node dist/index.js` without a flag still serves stdio.
 
-The Quant tool implementations, schemas and result formats in this release match `527e520` on main. Hosted credentials are isolated per request. This Wealth release does not include the separate Quant tool expansion from the earlier `wealth-report-tools` branch.
+The Quant tool implementations, schemas and result formats in this release match `527e520` on main. Default stdio retains those 13 tools. Set `PYON_MCP_PRODUCT=wealth` explicitly for the 11 Wealth stdio tools. Hosted credentials are isolated per request. This Wealth release does not include the separate Quant tool expansion from the earlier `wealth-report-tools` branch.

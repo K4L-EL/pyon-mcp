@@ -18,7 +18,7 @@ export const SERVER_VERSION = "0.3.0";
 
 export function createServer(options: ServerOptions = {}): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
-  const toolset = options.toolset ?? "all";
+  const toolset = options.toolset ?? "quant";
   const permitted = (scope: string): boolean => options.scopes === undefined || options.scopes.has(scope);
 
   // JSON-RPC allows omitting params.arguments entirely, and real agent clients
@@ -61,7 +61,9 @@ export function createServer(options: ServerOptions = {}): McpServer {
     "pyon://getting-started",
     {
       title: "Pyon getting started",
-      description:
+      description: toolset === "wealth"
+        ? "Wealth client reviews, report previews, explicit issue permissions and report branding"
+        :
         "Typical agent workflow (capabilities -> research -> strategy -> backtest -> diagnose -> edit -> optimize), " +
         "auth setup, enforced input rules, and plan limits",
       mimeType: "text/markdown",

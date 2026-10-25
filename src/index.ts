@@ -21,7 +21,9 @@ async function main(): Promise<void> {
     );
   }
 
-  const server = createServer();
+  const product = process.env.PYON_MCP_PRODUCT ?? "quant";
+  if (product !== "quant" && product !== "wealth") throw new Error("PYON_MCP_PRODUCT must be quant or wealth");
+  const server = createServer({ toolset: product });
   await server.connect(new StdioServerTransport());
   console.error("pyon-mcp: server running on stdio");
 }

@@ -67,7 +67,7 @@ process.env.PYON_API_URL = `http://127.0.0.1:${api.address().port}`;
 const { createServer } = await import("../dist/server.js");
 const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 const client = new Client({ name: "pyon-mcp-wealth-smoke", version: "0.0.0" });
-await Promise.all([createServer().connect(serverTransport), client.connect(clientTransport)]);
+await Promise.all([createServer({ toolset: "wealth" }).connect(serverTransport), client.connect(clientTransport)]);
 
 let passed = 0; const failures = [];
 function assert(condition, label, detail) {

@@ -255,7 +255,17 @@ console.log("\n[6] stdio is still the default");
   const client = new Client({ name: "stdio-smoke", version: "1.0.0" });
   await client.connect(child);
   const tools = await client.listTools();
-  assert(tools.tools.length === 24, "node dist/index.js with no flag serves the 13 existing Quant and 11 Wealth tools on stdio", String(tools.tools.length));
+  assert(tools.tools.length === 13 && !tools.tools.some(t => t.name === "list_wealth_clients"), "default stdio preserves the 13 existing Quant tools", String(tools.tools.length));
+  await client.close();
+}
+{
+  const child = new StdioClientTransport({ command: process.execPath, args: ["dist/index.js"],
+    env: { PATH: process.env.PATH ?? "", PYON_API_URL: "http://127.0.0.1:1", PYON_MCP_PRODUCT: "wealth" }, stderr: "pipe" });
+  const client = new Client({ name: "wealth-stdio-smoke", version: "1.0.0" });
+  await client.connect(child);
+  const tools = await client.listTools();
+  assert(tools.tools.length === 11 && tools.tools.some(t => t.name === "list_wealth_clients") && !tools.tools.some(t => t.name === "create_strategy"),
+    "Wealth stdio requires explicit product selection and exposes only Wealth tools", String(tools.tools.length));
   await client.close();
 }
 
